@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GPS距離 検証</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --black:#000;--plate:#F5C518;--paper:#FFF;--field:#F2F2F0;
+  --line:#D8D8D4;--grey:#6B6B6B;--ng:#C62222;--ok:#1E7A34;--gap:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--field);color:var(--black);
+  font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+  font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%;padding-bottom:40px}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font-family:inherit;font-size:16px}
+
+.plate-bar{background:var(--black);color:var(--plate);padding:14px 16px;
+  padding-top:calc(14px + env(safe-area-inset-top,0));position:sticky;top:0;z-index:30}
+.plate-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.plate-num{font-family:"Oswald",sans-serif;font-weight:600;font-size:22px;letter-spacing:.06em;line-height:1}
+.plate-date{font-family:"Oswald",sans-serif;font-size:14px;color:#fff;letter-spacing:.04em}
+.plate-sub{margin-top:6px;font-size:13px;color:#B9B9B9;line-height:1.4}
+.plate-state{color:var(--plate);font-weight:500}
+
+main{padding:var(--gap);max-width:640px;margin:0 auto}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:2px;padding:16px;margin-bottom:var(--gap)}
+.card.live{border:2px solid var(--black);box-shadow:4px 4px 0 rgba(0,0,0,.14)}
+.card.off{background:#EDEDEA;border-style:dashed;color:#9A9A96}
+.c-title{font-size:16px;font-weight:700;letter-spacing:.01em}
+.c-note{font-size:13px;color:var(--grey);margin-top:4px;line-height:1.5}
+.card.off .c-note{color:#A8A8A4}
+
+label.fld{display:block;margin-top:12px;font-size:13px;color:var(--grey);font-weight:500}
+input[type=number],input[type=text]{width:100%;padding:11px 12px;margin-top:5px;
+  border:1px solid var(--line);border-radius:2px;background:var(--field);
+  font-family:"Oswald",sans-serif;font-size:20px;letter-spacing:.03em}
+input:disabled{opacity:.5}
+
+.btn{display:block;width:100%;margin-top:14px;padding:14px;background:var(--black);
+  color:var(--plate);font-weight:700;border-radius:2px;letter-spacing:.04em}
+.btn:disabled{background:#C9C9C5;color:#8A8A86}
+.btn.sub{background:var(--paper);color:var(--black);border:1px solid var(--black);font-weight:500}
+.btn.ng{background:var(--ng);color:#fff}
+.row2{display:flex;gap:10px}
+.row2 .btn{flex:1}
+
+.shot{display:flex;align-items:center;gap:10px;margin-top:12px;padding:12px;
+  border:1px dashed var(--line);border-radius:2px;background:var(--field);font-size:14px;color:var(--grey)}
+.shot input{display:none}
+.thumb{width:100%;margin-top:10px;border:1px solid var(--line);display:block}
+
+.big{font-family:"Oswald",sans-serif;font-size:60px;line-height:1;letter-spacing:.02em;margin-top:10px}
+.big small{font-size:20px;color:var(--grey);margin-left:6px;letter-spacing:0}
+.pulse{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);
+  margin-right:8px;vertical-align:middle;animation:bl 1.6s infinite}
+.pulse.stale{background:var(--ng);animation:none}
+.pulse.idle{background:#B0B0AC;animation:none}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.25}}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.cellk{font-size:11px;color:var(--grey);letter-spacing:.02em}
+.cellv{font-family:"Oswald",sans-serif;font-size:19px;letter-spacing:.02em}
+.cellv.warn{color:var(--ng)}
+
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:8px 4px;text-align:right}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;color:var(--grey);font-weight:500;letter-spacing:.02em}
+td.num{font-family:"Oswald",sans-serif;font-size:16px}
+tr.best td{background:#FFFBEA}
+.err-ok{color:var(--ok);font-weight:700}
+.err-ng{color:var(--ng);font-weight:700}
+
+.hint{font-size:12px;color:var(--grey);margin-top:10px;line-height:1.6}
+.msg{margin-top:12px;padding:10px 12px;background:#FFF4F4;border-left:3px solid var(--ng);
+  font-size:13px;color:var(--ng);line-height:1.5}
+.msg.info{background:#F5F5F2;border-left-color:var(--grey);color:var(--grey)}
+hr{border:none;border-top:1px solid var(--line);margin:16px 0}
+</style>
+</head>
+<body>
+
+<div class="plate-bar">
+  <div class="plate-row">
+    <div class="plate-num">GPS DISTANCE TEST</div>
+    <div class="plate-date" id="clock">--:--</div>
+  </div>
+  <div class="plate-sub">オドメーター実測との照合検証 <span class="plate-state" id="hdrState">待機中</span></div>
+</div>
+
+<main>
+
+<!-- 1. 開始 -->
+<div class="card" id="cardStart">
+  <div class="c-title">① 稼働前 オドメーター</div>
+  <div class="c-note">メーターを撮影し、表示されている数値を入力してください。</div>
+
+  <label class="shot" for="picStart" id="picStartLabel">
+    <span>▥</span><span>オドメーターを撮影</span>
+    <input type="file" id="picStart" accept="image/*" capture="environment">
+  </label>
+  <img class="thumb" id="thumbStart" style="display:none">
+
+  <label class="fld">開始メーター (km)
+    <input type="number" id="odoStart" inputmode="decimal" step="1" placeholder="例 48210">
+  </label>
+
+  <button class="btn" id="btnStart" disabled>計測を開始する</button>
+  <div class="hint" id="startHint">数値を入力すると開始できます。</div>
+</div>
+
+<!-- 2. 計測中 -->
+<div class="card off" id="cardLive">
+  <div class="c-title"><span class="pulse idle" id="pulse"></span>② GPS 累積距離</div>
+  <div class="c-note">画面を消さずに走行してください。動いていれば数値が増えます。</div>
+
+  <div class="big" id="liveKm">0.00<small>km</small></div>
+
+  <div class="grid">
+    <div><div class="cellk">現在速度</div><div class="cellv" id="mSpeed">— km/h</div></div>
+    <div><div class="cellk">測位精度</div><div class="cellv" id="mAcc">— m</div></div>
+    <div><div class="cellk">取得点数</div><div class="cellv" id="mPts">0</div></div>
+    <div><div class="cellk">最終取得</div><div class="cellv" id="mAge">— 秒前</div></div>
+    <div><div class="cellk">経過時間</div><div class="cellv" id="mElapsed">0:00</div></div>
+    <div><div class="cellk">最大測位間隔</div><div class="cellv" id="mGap">— 秒</div></div>
+    <div><div class="cellk">バックグラウンド</div><div class="cellv" id="mBg">0 回</div></div>
+    <div><div class="cellk">画面ロック防止</div><div class="cellv" id="mWake">—</div></div>
+  </div>
+
+  <div class="msg info" id="liveMsg" style="display:none"></div>
+</div>
+
+<!-- 3. 終了 -->
+<div class="card off" id="cardEnd">
+  <div class="c-title">③ 稼働後 オドメーター</div>
+  <div class="c-note">終了時のメーターを撮影し、数値を入力してください。</div>
+
+  <label class="shot" for="picEnd" id="picEndLabel">
+    <span>▥</span><span>オドメーターを撮影</span>
+    <input type="file" id="picEnd" accept="image/*" capture="environment">
+  </label>
+  <img class="thumb" id="thumbEnd" style="display:none">
+
+  <label class="fld">終了メーター (km)
+    <input type="number" id="odoEnd" inputmode="decimal" step="1" placeholder="例 48342" disabled>
+  </label>
+
+  <button class="btn" id="btnEnd" disabled>計測を終了して照合する</button>
+</div>
+
+<!-- 4. 結果 -->
+<div class="card" id="cardResult" style="display:none">
+  <div class="c-title">④ 照合結果</div>
+  <div class="c-note">オドメーター実測を正解として、各フィルタ条件の誤差を比較します。</div>
+
+  <div class="grid" style="grid-template-columns:1fr">
+    <div><div class="cellk">オドメーター実測 (終了 − 開始)</div>
+      <div class="cellv" id="rOdo" style="font-size:32px">— km</div></div>
+  </div>
+
+  <table>
+    <thead><tr><th>算出方法</th><th>距離 km</th><th>誤差 km</th><th>誤差 %</th></tr></thead>
+    <tbody id="rBody"></tbody>
+  </table>
+
+  <div class="hint">
+    <b>標準</b>=精度30m以下・8m未満の移動を無視 ／ <b>厳格</b>=精度15m以下・15m未満を無視 ／
+    <b>速度積分</b>=端末の速度センサ値を時間積分（位置差分を使わない方式）。<br>
+    誤差3%以内なら実用域、5%超なら条件の見直しが必要です。
+  </div>
+
+  <hr>
+  <div class="row2">
+    <button class="btn sub" id="btnCsv">CSV出力</button>
+    <button class="btn sub" id="btnCopy">結果をコピー</button>
+  </div>
+</div>
+
+<!-- 診断・操作 -->
+<div class="card">
+  <div class="c-title">診断ログ</div>
+  <div class="grid">
+    <div><div class="cellk">保存状態</div><div class="cellv" id="dStore" style="font-size:14px">—</div></div>
+    <div><div class="cellk">記録点数</div><div class="cellv" id="dPts">0</div></div>
+    <div><div class="cellk">精度で除外</div><div class="cellv" id="dRejAcc">0</div></div>
+    <div><div class="cellk">微動で除外</div><div class="cellv" id="dRejSeg">0</div></div>
+  </div>
+  <div class="msg" id="errBox" style="display:none"></div>
+  <button class="btn ng" id="btnReset" style="margin-top:16px">この検証をリセット</button>
+  <div class="hint">
+    リセットすると入力値・写真・GPSログをすべて消去します。
+  </div>
+</div>
+
+</main>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- 保存レイヤ（localStorage が使えない環境ではメモリのみ） ---------- */
+var KEY='gpsTest_v1', storeOK=true;
+function save(){
+  try{
+    var payload={
+      phase:S.phase, startedAt:S.startedAt, endedAt:S.endedAt,
+      odoStart:S.odoStart, odoEnd:S.odoEnd,
+      picStart:S.picStart, picEnd:S.picEnd,
+      spdDist:S.spdDist, bgCount:S.bgCount, maxGap:S.maxGap,
+      prof:P.map(function(p){return {id:p.id,dist:p.dist,used:p.used,rejAcc:p.rejAcc,rejSeg:p.rejSeg,rejSpd:p.rejSpd};}),
+      raw:RAW.slice(-40000)
+    };
+    localStorage.setItem(KEY, JSON.stringify(payload));
+    storeOK=true;
+  }catch(e){
+    storeOK=false;
+    // 容量超過時は写真を落として再試行
+    try{
+      localStorage.setItem(KEY, JSON.stringify({phase:S.phase,startedAt:S.startedAt,
+        odoStart:S.odoStart,odoEnd:S.odoEnd,spdDist:S.spdDist,
+        prof:P.map(function(p){return {id:p.id,dist:p.dist,used:p.used};}),raw:RAW.slice(-8000)}));
+    }catch(e2){}
+  }
+  $('dStore').textContent = storeOK ? '保存済' : 'メモリのみ';
+}
+function load(){
+  try{
+    var s=localStorage.getItem(KEY); if(!s) return null;
+    return JSON.parse(s);
+  }catch(e){ storeOK=false; return null; }
+}
+
+/* ---------- 状態 ---------- */
+var S={phase:'idle', startedAt:null, endedAt:null, odoStart:null, odoEnd:null,
+        picStart:null, picEnd:null, spdDist:0, bgCount:0, maxGap:0};
+var RAW=[];            // [t, lat, lon, acc, spd(m/s|null)]
+var watchId=null, wakeLock=null, prevFix=null, lastFixAt=0, tick=null;
+
+var P=[
+  {id:'raw',   name:'生データ', maxAcc:Infinity, minSeg:0,  maxKmh:Infinity},
+  {id:'std',   name:'標準',     maxAcc:30,       minSeg:8,  maxKmh:140},
+  {id:'tight', name:'厳格',     maxAcc:15,       minSeg:15, maxKmh:140}
+];
+P.forEach(function(p){p.dist=0;p.used=0;p.rejAcc=0;p.rejSeg=0;p.rejSpd=0;p.last=null;});
+
+function $(id){return document.getElementById(id);}
+function fmt(n,d){return (n==null||isNaN(n))?'—':Number(n).toFixed(d==null?2:d);}
+
+/* ---------- 距離計算 ---------- */
+function hav(a,b){
+  var R=6371000, t1=a[1]*Math.PI/180, t2=b[1]*Math.PI/180;
+  var dt=(b[1]-a[1])*Math.PI/180, dl=(b[2]-a[2])*Math.PI/180;
+  var x=Math.sin(dt/2)*Math.sin(dt/2)+Math.cos(t1)*Math.cos(t2)*Math.sin(dl/2)*Math.sin(dl/2);
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+/* ---------- 測位 ---------- */
+function onFix(pos){
+  var c=pos.coords, t=pos.timestamp||Date.now();
+  var p=[t, c.latitude, c.longitude, c.accuracy==null?999:c.accuracy,
+         (c.speed==null||isNaN(c.speed))?null:c.speed];
+
+  if(prevFix){
+    var gap=(t-prevFix[0])/1000;
+    if(gap>S.maxGap) S.maxGap=gap;
+    if(p[4]!=null && gap>0 && gap<30) S.spdDist += p[4]*gap;   // 速度積分
+  }
+  prevFix=p; lastFixAt=Date.now();
+
+  for(var i=0;i<P.length;i++){
+    var pr=P[i];
+    if(p[3]>pr.maxAcc){pr.rejAcc++;continue;}
+    if(!pr.last){pr.last=p;pr.used++;continue;}
+    var d=hav(pr.last,p), dt2=(t-pr.last[0])/1000;
+    if(dt2<=0) continue;
+    if(d/dt2*3.6>pr.maxKmh){pr.rejSpd++;continue;}
+    if(d<pr.minSeg){pr.rejSeg++;continue;}
+    pr.dist+=d; pr.last=p; pr.used++;
+  }
+
+  RAW.push(p);
+  if(RAW.length%20===0) save();
+  render();
+}
+function onErr(e){
+  var m={1:'位置情報の利用が許可されていません。ブラウザ設定で許可してください。',
+         2:'位置を取得できません（屋内・地下の可能性）。',
+         3:'測位がタイムアウトしました。'}[e.code]||('測位エラー: '+e.message);
+  $('errBox').style.display='block'; $('errBox').textContent=m;
+}
+
+function startWatch(){
+  if(!navigator.geolocation){onErr({code:0,message:'この端末は位置情報に対応していません'});return;}
+  watchId=navigator.geolocation.watchPosition(onFix,onErr,
+    {enableHighAccuracy:true, maximumAge:0, timeout:20000});
+  requestWake();
+  tick=setInterval(render,1000);
+}
+function stopWatch(){
+  if(watchId!=null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  if(tick){clearInterval(tick);tick=null;}
+  releaseWake();
+}
+
+/* ---------- 画面ロック防止 ---------- */
+function requestWake(){
+  if(!('wakeLock' in navigator)){$('mWake').textContent='非対応';return;}
+  navigator.wakeLock.request('screen').then(function(w){
+    wakeLock=w; $('mWake').textContent='有効';
+    w.addEventListener('release',function(){$('mWake').textContent='解除';});
+  }).catch(function(){$('mWake').textContent='失敗';});
+}
+function releaseWake(){ if(wakeLock){try{wakeLock.release();}catch(e){} wakeLock=null;} }
+
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){ if(S.phase==='run'){S.bgCount++;save();} }
+  else { if(S.phase==='run'&&!wakeLock) requestWake(); render(); }
+});
+
+/* ---------- 写真 ---------- */
+function shrink(file,cb){
+  var r=new FileReader();
+  r.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      var max=1280, w=img.width, h=img.height, s=Math.min(1,max/Math.max(w,h));
+      var cv=document.createElement('canvas'); cv.width=Math.round(w*s); cv.height=Math.round(h*s);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      cb(cv.toDataURL('image/jpeg',0.72));
+    };
+    img.onerror=function(){cb(null);};
+    img.src=r.result;
+  };
+  r.readAsDataURL(file);
+}
+function bindPic(inputId,thumbId,labelId,key){
+  $(inputId).addEventListener('change',function(e){
+    var f=e.target.files&&e.target.files[0]; if(!f) return;
+    shrink(f,function(d){
+      if(!d) return;
+      S[key]=d; $(thumbId).src=d; $(thumbId).style.display='block';
+      $(labelId).querySelector('span:last-of-type').textContent='撮影済み（タップで撮り直し）';
+      save();
+    });
+  });
+}
+bindPic('picStart','thumbStart','picStartLabel','picStart');
+bindPic('picEnd','thumbEnd','picEndLabel','picEnd');
+
+/* ---------- 描画 ---------- */
+function render(){
+  var std=P[1];
+  $('liveKm').innerHTML=fmt(std.dist/1000,2)+'<small>km</small>';
+
+  var last=prevFix;
+  $('mSpeed').textContent = (last&&last[4]!=null)? fmt(last[4]*3.6,0)+' km/h' : '— km/h';
+  $('mAcc').textContent   = last? fmt(last[3],0)+' m' : '— m';
+  $('mPts').textContent   = RAW.length;
+  $('mElapsed').textContent = S.startedAt? hms(Date.now()-S.startedAt) : '0:00';
+  $('mGap').textContent   = S.maxGap? fmt(S.maxGap,0)+' 秒' : '— 秒';
+  $('mBg').textContent    = S.bgCount+' 回';
+
+  var age = lastFixAt? Math.round((Date.now()-lastFixAt)/1000) : null;
+  var ageEl=$('mAge'), pulse=$('pulse');
+  if(S.phase!=='run'){ ageEl.textContent='—'; ageEl.className='cellv'; pulse.className='pulse idle'; }
+  else if(age==null){ ageEl.textContent='取得待ち'; pulse.className='pulse'; }
+  else{
+    ageEl.textContent=age+' 秒前';
+    var stale=age>20;
+    ageEl.className='cellv'+(stale?' warn':'');
+    pulse.className='pulse'+(stale?' stale':'');
+  }
+
+  $('dPts').textContent=RAW.length;
+  $('dRejAcc').textContent=std.rejAcc;
+  $('dRejSeg').textContent=std.rejSeg;
+
+  var lm=$('liveMsg');
+  if(S.phase==='run'&&S.bgCount>0){
+    lm.style.display='block';
+    lm.textContent='画面を離れた回数 '+S.bgCount+' 回。最大測位間隔が長い場合、その間の距離が欠落しています。';
+  }else lm.style.display='none';
+}
+function hms(ms){
+  var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60);
+  return h? h+':'+String(m).padStart(2,'0') : m+':'+String(s%60).padStart(2,'0');
+}
+
+/* ---------- 入力監視 ---------- */
+$('odoStart').addEventListener('input',function(){
+  var v=parseFloat(this.value);
+  $('btnStart').disabled = !(v>0);
+  $('startHint').textContent = (v>0)?'この値を基準に照合します。':'数値を入力すると開始できます。';
+});
+$('odoEnd').addEventListener('input',function(){
+  var v=parseFloat(this.value);
+  $('btnEnd').disabled = !(v>0 && S.odoStart!=null && v>=S.odoStart);
+});
+
+/* ---------- 開始 / 終了 ---------- */
+$('btnStart').addEventListener('click',function(){
+  S.odoStart=parseFloat($('odoStart').value);
+  S.startedAt=Date.now(); S.phase='run';
+  $('odoStart').disabled=true; this.disabled=true; this.textContent='計測中';
+  $('cardStart').classList.add('off');
+  $('cardLive').classList.remove('off'); $('cardLive').classList.add('live');
+  $('cardEnd').classList.remove('off');
+  $('odoEnd').disabled=false;
+  $('hdrState').textContent='計測中';
+  startWatch(); save(); render();
+});
+
+$('btnEnd').addEventListener('click',function(){
+  S.odoEnd=parseFloat($('odoEnd').value);
+  S.endedAt=Date.now(); S.phase='done';
+  stopWatch();
+  $('odoEnd').disabled=true; this.disabled=true; this.textContent='照合済み';
+  $('cardLive').classList.remove('live');
+  $('hdrState').textContent='照合済み';
+  showResult(); save(); render();
+});
+
+function showResult(){
+  var odo=S.odoEnd-S.odoStart;
+  $('rOdo').textContent=fmt(odo,1)+' km';
+  var rows=P.map(function(p){return {name:p.name,km:p.dist/1000};});
+  rows.push({name:'速度積分',km:S.spdDist/1000});
+
+  var best=null;
+  rows.forEach(function(r){
+    r.err=r.km-odo;
+    r.pct= odo>0 ? (r.err/odo*100) : null;
+    if(odo>0 && (best===null||Math.abs(r.pct)<Math.abs(best.pct))) best=r;
+  });
+
+  $('rBody').innerHTML=rows.map(function(r){
+    var cls = r.pct==null?'':(Math.abs(r.pct)<=3?'err-ok':'err-ng');
+    return '<tr'+(r===best?' class="best"':'')+'>'+
+      '<td>'+r.name+'</td>'+
+      '<td class="num">'+fmt(r.km,2)+'</td>'+
+      '<td class="num">'+(r.err>=0?'+':'')+fmt(r.err,2)+'</td>'+
+      '<td class="num '+cls+'">'+(r.pct==null?'—':((r.pct>=0?'+':'')+fmt(r.pct,1)+'%'))+'</td></tr>';
+  }).join('');
+
+  $('cardResult').style.display='block';
+  $('cardResult').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ---------- 出力 ---------- */
+$('btnCsv').addEventListener('click',function(){
+  var head='time_iso,lat,lon,accuracy_m,speed_kmh,seg_m\n';
+  var prev=null;
+  var body=RAW.map(function(p){
+    var seg=prev?hav(prev,p):0; prev=p;
+    return [new Date(p[0]).toISOString(),p[1].toFixed(6),p[2].toFixed(6),
+            p[3].toFixed(1),(p[4]==null?'':(p[4]*3.6).toFixed(1)),seg.toFixed(1)].join(',');
+  }).join('\n');
+  var blob=new Blob([head+body],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='gps_test_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+});
+
+$('btnCopy').addEventListener('click',function(){
+  var odo=S.odoEnd-S.odoStart;
+  var txt='GPS距離検証 '+new Date(S.startedAt).toLocaleString('ja-JP')+'\n'+
+    'オドメーター実測 '+fmt(odo,1)+' km\n'+
+    P.map(function(p){return p.name+' '+fmt(p.dist/1000,2)+' km ('+fmt((p.dist/1000-odo)/odo*100,1)+'%)';}).join('\n')+
+    '\n速度積分 '+fmt(S.spdDist/1000,2)+' km'+
+    '\n取得点数 '+RAW.length+' / 最大測位間隔 '+fmt(S.maxGap,0)+'秒 / BG '+S.bgCount+'回';
+  if(navigator.clipboard) navigator.clipboard.writeText(txt);
+  this.textContent='コピーしました';
+  var b=this; setTimeout(function(){b.textContent='結果をコピー';},1600);
+});
+
+$('btnReset').addEventListener('click',function(){
+  if(!confirm('入力値・写真・GPSログをすべて消去します。よろしいですか？')) return;
+  stopWatch();
+  try{localStorage.removeItem(KEY);}catch(e){}
+  location.reload();
+});
+
+/* ---------- 復元 ---------- */
+(function restore(){
+  var d=load();
+  $('dStore').textContent = storeOK ? '利用可' : 'メモリのみ';
+  if(!d) { render(); return; }
+  S.phase=d.phase; S.startedAt=d.startedAt; S.endedAt=d.endedAt;
+  S.odoStart=d.odoStart; S.odoEnd=d.odoEnd;
+  S.picStart=d.picStart||null; S.picEnd=d.picEnd||null;
+  S.spdDist=d.spdDist||0; S.bgCount=d.bgCount||0; S.maxGap=d.maxGap||0;
+  RAW=d.raw||[];
+  if(d.prof) d.prof.forEach(function(x){
+    var p=P.filter(function(q){return q.id===x.id;})[0];
+    if(p){p.dist=x.dist||0;p.used=x.used||0;p.rejAcc=x.rejAcc||0;p.rejSeg=x.rejSeg||0;p.rejSpd=x.rejSpd||0;}
+  });
+  if(RAW.length){ prevFix=RAW[RAW.length-1];
+    P.forEach(function(p){p.last=RAW[RAW.length-1];}); }
+
+  if(S.odoStart!=null){$('odoStart').value=S.odoStart;}
+  if(S.picStart){$('thumbStart').src=S.picStart;$('thumbStart').style.display='block';}
+  if(S.picEnd){$('thumbEnd').src=S.picEnd;$('thumbEnd').style.display='block';}
+
+  if(S.phase==='run'){
+    $('odoStart').disabled=true;
+    $('btnStart').disabled=true; $('btnStart').textContent='計測中';
+    $('cardStart').classList.add('off');
+    $('cardLive').classList.remove('off'); $('cardLive').classList.add('live');
+    $('cardEnd').classList.remove('off'); $('odoEnd').disabled=false;
+    $('hdrState').textContent='計測中（再開）';
+    startWatch();
+  }else if(S.phase==='done'){
+    $('odoStart').disabled=true; $('odoEnd').value=S.odoEnd; $('odoEnd').disabled=true;
+    $('btnStart').disabled=true; $('btnStart').textContent='計測済み';
+    $('btnEnd').disabled=true; $('btnEnd').textContent='照合済み';
+    $('cardStart').classList.add('off');
+    $('hdrState').textContent='照合済み';
+    showResult();
+  }
+  render();
+})();
+
+setInterval(function(){
+  var d=new Date();
+  $('clock').textContent=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+},1000);
+
+})();
+</script>
+</body>
+</html>
