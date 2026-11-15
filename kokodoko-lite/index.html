@@ -913,6 +913,7 @@ function bearingText(lat1, lng1, lat2, lng2) {
 
 // ===== 画面まわり =====
 var map, layers = {}, resultGroup, meMarker, meCircle, me = null;
+var userZoom = null, progMove = false;   // 利用者が選んだ縮尺（画面の中だけ。保存しない）
 var cnt = { heard: 0, parsed: 0, shown: 0 };
 function showCnt() { $('cnt').textContent = '聞取 ' + cnt.heard + '／解釈 ' + cnt.parsed + '／地図 ' + cnt.shown; }
 var recog = null, listening = false, wantListen = true, lastText = '', lastAt = 0;
@@ -925,6 +926,7 @@ function initMap() {
   resultGroup = L.layerGroup().addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
   addBanchi(map);   // 番地の数字（追加）
+  map.on('zoomend', function () { if (!progMove) userZoom = map.getZoom(); });   // ＋/－・つまんでの拡大縮小を覚える（追加）
 }
 
 function startGps() {
@@ -1016,8 +1018,18 @@ function draw(items, title) {
       L.marker(ll, { icon: L.divIcon({ className: 'lbl', html: lab.replace(DEFAULT_TOWN, ''), iconSize: [120, 28], iconAnchor: [60, 14] }), interactive: false }).addTo(resultGroup);
     }
   });
-  if (me) pts.push([me.lat, me.lng]);
-  map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: 18, animate: false });
+  // 縮尺（2026-11-15 利用者の依頼で変更）：利用者が一度でも拡大・縮小したら、その縮尺を保って結果へ移るだけにする。
+  // まだ触っていなければ、もとのとおり結果と現在地が入るように寄せる
+  progMove = true;
+  if (userZoom == null) {
+    if (me) pts.push([me.lat, me.lng]);
+    map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: 18, animate: false });
+  } else if (pts.length === 1) {
+    map.setView(pts[0], userZoom, { animate: false });
+  } else {   // 複数該当：縮尺は保つ。円が画面に入りきらないときだけ縮める
+    map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: userZoom, animate: false });
+  }
+  progMove = false;
   var msg = items.map(function (it) { return it.cand.label + (it.hit.level === 'go' ? '' : '（' + (it.hit.level === 'ban' ? '番まで' : '丁目まで') + '）'); }).join(' / ');
   if (me) {
     var first = items[0].hit;
